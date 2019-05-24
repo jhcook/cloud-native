@@ -87,12 +87,6 @@ class EC2Resources:
             '_EC2Resources__instances': self.instances, 
             '_EC2Resources__volumes': self.volumes}  
 
-#  def __setstate__(self):
-#    self.__conn = None
-#    self.__session = None
-#    self.__instances = self.__instances
-#    self.__volumes = self.__volumes
-
 def parse_args():
   parser = argparse.ArgumentParser()
   parser.add_argument("-v", "--verbosity", action="count", default=0,
@@ -104,6 +98,8 @@ def parse_args():
                       "for all regions.")
   parser.add_argument("-p", "--profile", type=str, 
                       help="use specified profile") 
+  parser.add_argument("-i", "--ignore-cache", action="store_true", 
+                      default=False, help="do not load but refresh the cache.")
   parser.add_argument("tags", type=str, help="specify tags to search, e.g. " +
                       "stack_name=test,test01;role=hadoop,hbase")
   args = parser.parse_args()
@@ -136,24 +132,30 @@ def main():
   
   regions = []
   for region in userRegion:
+    k = "{}_{}_{}".format(args.profile, region, '_'.join(["{}_{}".format(x, y) 
+                                     for f in filters for x, y in f.items()]))
+    if args.verbosity > 3: print(k)
     try:
-      regions.append({region:pickle.loads(cache[region + str(args.tags)])})
-      if args.verbosity > 1: print("{}{}from cache".format(region, args.tags))
+      if not args.ignore_cache:
+        regions.append({k:pickle.loads(cache[k])})
+        if args.verbosity > 1: print("{} from cache".format(k))
+      else:
+        raise KeyError
     except KeyError:
-      regions.append({region:EC2Resources(session, filters, region)})
+      regions.append({k:EC2Resources(session, filters, region)})
+      if args.verbosity > 1: print("{} skipped cache".format(k))
 
-  #regions = [ {region:EC2Resources(session, filters, region)} for region in 
-  #            userRegion ]
   if args.verbosity>1: print("regions: {}".format(regions))
   
   for rdict in regions:
     for region, ec2Instance in rdict.items():
+      if args.verbosity > 3: print(k)
       # Convert to JSON -> Python data structure -> JSON for proper formatting
       jsonContent = json.dumps(ec2Instance.instances, cls=DateTimeEncoder)
       from_json = json.loads(jsonContent) # Shrugs
       print(json.dumps(from_json, indent=4))
       if args.verbosity > 3: print(ec2Instance.__dict__)
-      cache.set(region + str(args.tags), pickle.dumps(ec2Instance), expire=3600)
+      cache.set(region, pickle.dumps(ec2Instance), expire=3600)
   
   cache.close()
 
