@@ -18,49 +18,22 @@
 #
 # Author: Justin Cook <jhcook@secnix.com>
 
-import sys, os, json, argparse, zlib
+import sys, os, json, argparse, copy
 from datetime import datetime
 
 try:
   import boto3
-  from diskcache import Cache, Disk
+  import dill as pickle
+  from diskcache import Cache
 except ModuleNotFoundError as err:
   print(err, file=sys.stderr)
   sys.exit(1)
-
-class JSONDiskCache(Disk):
-  def __init__(self, directory, compress_level=1, **kwargs):
-    self.compress_level = compress_level
-    super(JSONDiskCache, self).__init__(directory, **kwargs)
-
-  def put(self, key):
-    json_bytes = json.dumps(key).encode('utf-8')
-    data = zlib.compress(json_bytes, self.compress_level)
-    return super(JSONDiskCache, self).put(data)
-
-  def get(self, key, raw):
-    data = super(JSONDiskCache, self).get(key, raw)
-    return json.loads(zlib.decompress(data).decode('utf-8'))
-
-  def store(self, value, read):
-    if not read:
-      json_bytes = json.dumps(value).encode('utf-8')
-      value = zlib.compress(json_bytes, self.compress_level)
-    return super(JSONDiskCache, self).store(value, read)
-
-  def fetch(self, mode, filename, value, read):
-    data = super(JSONDiskCache, self).fetch(mode, filename, value, read)
-    if not read:
-      data = json.loads(zlib.decompress(data).decode('utf-8'))
-    return data
 
 class DateTimeEncoder(json.JSONEncoder):
   '''some objects are not serialisable to json'''
   def default(self, o):
     if isinstance(o, datetime):
       return o.isoformat()
-    elif isinstance(o, boto3.Session) or isinstance(o, boto3.ec2):
-      return ''
     return json.JSONEncoder.default(self, o)
 
 class EC2Resources:
@@ -69,8 +42,8 @@ class EC2Resources:
     self.region = region
     self.__conn = self.__session.client("ec2", region_name=self.region)
     self.filters = filters
-    self.instances = self.__conn.describe_instances
-    self.volumes = self.__conn.describe_volumes
+    self.instances = copy.copy(self.__conn.describe_instances)
+    self.volumes = copy.copy(self.__conn.describe_volumes)
 
   @property
   def filters(self):
@@ -106,6 +79,20 @@ class EC2Resources:
   def volumes(self, callableFunc):
     self.__volumes = callableFunc(Filters=self.filters)
 
+  def __getstate__(self):
+    return {'_EC2Resources__session': None, 
+            '_EC2Resources__region': self.region, 
+            '_EC2Resources__conn': None, 
+            '_EC2Resources__filters': self.filters, 
+            '_EC2Resources__instances': self.instances, 
+            '_EC2Resources__volumes': self.volumes}  
+
+#  def __setstate__(self):
+#    self.__conn = None
+#    self.__session = None
+#    self.__instances = self.__instances
+#    self.__volumes = self.__volumes
+
 def parse_args():
   parser = argparse.ArgumentParser()
   parser.add_argument("-v", "--verbosity", action="count", default=0,
@@ -137,7 +124,7 @@ def main():
   conn = session.client('ec2')
 
   # Create region list
-  if args.region == 'all':
+  if args.region[0] == 'all':
     userRegion = [ region['RegionName'] for region in [ region for region in 
     conn.describe_regions()['Regions']]]
   else:
@@ -145,28 +132,30 @@ def main():
   if args.verbosity: print("userRegion: {}".format(userRegion))
 
   # Cache results to disk
-  cache = Cache(os.path.expanduser('~') + '/.awstools', disk=JSONDiskCache,
-                disk_compress_level=6)
+  cache = Cache(os.path.expanduser('~') + '/.awstools')
   
   regions = []
   for region in userRegion:
     try:
-      regions.append(cache[region + str(filters)])
+      regions.append({region:pickle.loads(cache[region + str(args.tags)])})
+      if args.verbosity > 1: print("{}{}from cache".format(region, args.tags))
     except KeyError:
       regions.append({region:EC2Resources(session, filters, region)})
 
   #regions = [ {region:EC2Resources(session, filters, region)} for region in 
   #            userRegion ]
   if args.verbosity>1: print("regions: {}".format(regions))
-
-  for region in regions:
-    for k, ec2Instance in region.items():
+  
+  for rdict in regions:
+    for region, ec2Instance in rdict.items():
       # Convert to JSON -> Python data structure -> JSON for proper formatting
       jsonContent = json.dumps(ec2Instance.instances, cls=DateTimeEncoder)
       from_json = json.loads(jsonContent) # Shrugs
       print(json.dumps(from_json, indent=4))
-      #cache.add(k + str(ec2Instance.filters), json.dumps(ec2Instance.__dict__,
-      #                                                   cls=DateTimeEncoder))
+      if args.verbosity > 3: print(ec2Instance.__dict__)
+      cache.set(region + str(args.tags), pickle.dumps(ec2Instance), expire=3600)
+  
+  cache.close()
 
 if __name__ == "__main__":
   try:
