@@ -6,7 +6,7 @@
 # Usage: `basename $0` [-v][-r region1,region2] [-p profile] 
 #                      <tag1=value,tag2=value,...,tagN=value>
 #
-# Requires: Python3, Boto 3
+# Requires: Python3, Boto 3, dill, and diskcache
 #
 # Before you can begin using Boto 3, you should set up authentication 
 # credentials. Credentials for your AWS account can be found in the IAM
@@ -37,6 +37,9 @@ class DateTimeEncoder(json.JSONEncoder):
     return json.JSONEncoder.default(self, o)
 
 class EC2Resources:
+  '''This class simply establishes a connection to the specified region and
+  populates variables with resources returned from that region matching the
+  provided filters.'''
   def __init__(self, session, filters, region=None):
     self.__session = session
     self.region = region
@@ -80,6 +83,8 @@ class EC2Resources:
     self.__volumes = callableFunc(Filters=self.filters)
 
   def __getstate__(self):
+    '''There's no sense in caching connections, so this magic method is used
+    to keep only necessary information when pickled.'''
     return {'_EC2Resources__session': None, 
             '_EC2Resources__region': self.region, 
             '_EC2Resources__conn': None, 
@@ -130,6 +135,7 @@ def main():
   # Cache results to disk
   cache = Cache(os.path.expanduser('~') + '/.awstools')
   
+  # Create a list of {region: EC2Resources}
   regions = []
   for region in userRegion:
     k = "{}_{}_{}".format(args.profile, region, '_'.join(["{}_{}".format(x, y) 
@@ -147,9 +153,9 @@ def main():
 
   if args.verbosity>1: print("regions: {}".format(regions))
   
+  # Iterate through the list of {region: EC2Resources}, print, and update cache
   for rdict in regions:
     for region, ec2Instance in rdict.items():
-      if args.verbosity > 3: print(k)
       # Convert to JSON -> Python data structure -> JSON for proper formatting
       jsonContent = json.dumps(ec2Instance.instances, cls=DateTimeEncoder)
       from_json = json.loads(jsonContent) # Shrugs
