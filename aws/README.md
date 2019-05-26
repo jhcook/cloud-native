@@ -13,6 +13,7 @@ jq
 
 ## Usage
 
+Search all regions for instances attached to shutdown instances:
 
 ```
 $ awsShutdownInstanceVolumes.sh myprofile
@@ -22,11 +23,15 @@ us-west-2: vol-012a123456789abcf: 8
 Stopped GiB: 68
 ```
 
+Search all regions for unattached instances:
+
 ```
 $ awsUnattachedVolumes.sh myprofile
 us-west-2: vol-012a123456789abcg: 100
 Unattached GiB: 100
 ```
+
+Search all or specified reggions for instances and volumes that match tags:
 
 ```
 $ ./awsResourceByTag.py -r eu-west-1 name=test
