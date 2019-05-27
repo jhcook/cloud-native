@@ -97,7 +97,7 @@ class EC2Resources:
 
   def __getstate__(self):
     '''Do not cache connections and sessions in order to detect if the cache 
-    should be updated. Therefore, remove them from the oject so tehy are not
+    should be updated. Therefore, remove them from the object so they are not
     serialised.'''
     return {'_EC2Resources__session': None, 
             '_EC2Resources__region': self.region, 
@@ -154,7 +154,7 @@ def main():
   for region in userRegion:
     k = "{}_{}_{}".format(args.profile, region, '_'.join(["{}_{}".format(x, y) 
                                      for f in filters for x, y in f.items()]))
-    if args.verbosity > 3: print(k)
+    if args.verbosity > 2: print(k)
     try:
       if not args.ignore_cache:
         regions.append({k:pickle.loads(cache[k])})
@@ -174,7 +174,7 @@ def main():
       jsonContent = json.dumps(ec2Instance.instances, cls=DateTimeEncoder)
       from_json = json.loads(jsonContent) # Shrugs
       print(json.dumps(from_json, indent=4))
-      if args.verbosity > 3: print(ec2Instance.__dict__)
+      if args.verbosity > 2: print(ec2Instance.__dict__)
       if ec2Instance.session:
         cache.set(region, pickle.dumps(ec2Instance), expire=3600)
   
