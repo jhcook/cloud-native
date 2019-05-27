@@ -4,7 +4,7 @@
 # that match tags provided.
 #
 # Usage: `basename $0` [-v][-r region1,region2] [-p profile] 
-#                      <tag1=value,tag2=value,...,tagN=value>
+#                      <tag1=value,value;tag2=value;...;tagN=value>
 #
 # Requires: Python3, Boto 3, dill, and diskcache
 #
@@ -51,6 +51,8 @@ class EC2Resources:
 
   @property
   def session(self):
+    '''This method is obvious, but the intention is to use this to detect if
+    this object is from cache.'''
     return self.__session
 
   @property
@@ -94,8 +96,9 @@ class EC2Resources:
       self.__volumes = { "Error": '{}'.format(err) }
 
   def __getstate__(self):
-    '''There's no sense in caching connections, so this magic method is used
-    to keep only necessary information when pickled.'''
+    '''Do not cache connections and sessions in order to detect if the cache 
+    should be updated. Therefore, remove them from the oject so tehy are not
+    serialised.'''
     return {'_EC2Resources__session': None, 
             '_EC2Resources__region': self.region, 
             '_EC2Resources__conn': None, 
