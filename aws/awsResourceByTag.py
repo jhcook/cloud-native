@@ -50,6 +50,10 @@ class EC2Resources:
     self.volumes = copy.copy(self.__conn.describe_volumes)
 
   @property
+  def session(self):
+    return self.__session
+
+  @property
   def filters(self):
     return self.__filters
   
@@ -75,7 +79,7 @@ class EC2Resources:
     try:
       self.__instances = callableFunc(Filters=self.filters)
     except EndpointConnectionError as err:
-      self.__instances = '{ Error: {} }'.format(err)
+      self.__instances = { "Error": '{}'.format(err) }
 
   @property
   def volumes(self):
@@ -87,7 +91,7 @@ class EC2Resources:
     try:
       self.__volumes = callableFunc(Filters=self.filters)
     except EndpointConnectionError as err:
-      self.__volumes = '{ Error: {} }'.format(err)
+      self.__volumes = { "Error": '{}'.format(err) }
 
   def __getstate__(self):
     '''There's no sense in caching connections, so this magic method is used
@@ -168,7 +172,8 @@ def main():
       from_json = json.loads(jsonContent) # Shrugs
       print(json.dumps(from_json, indent=4))
       if args.verbosity > 3: print(ec2Instance.__dict__)
-      cache.set(region, pickle.dumps(ec2Instance), expire=3600)
+      if ec2Instance.session:
+        cache.set(region, pickle.dumps(ec2Instance), expire=3600)
   
   cache.close()
 
