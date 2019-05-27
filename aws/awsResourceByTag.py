@@ -23,6 +23,7 @@ from datetime import datetime
 
 try:
   import boto3
+  from botocore.exceptions import EndpointConnectionError
   import dill as pickle
   from diskcache import Cache
 except ModuleNotFoundError as err:
@@ -71,7 +72,10 @@ class EC2Resources:
 
   @instances.setter
   def instances(self, callableFunc):
-    self.__instances = callableFunc(Filters=self.filters)
+    try:
+      self.__instances = callableFunc(Filters=self.filters)
+    except EndpointConnectionError as err:
+      self.__instances = '{ Error: {} }'.format(err)
 
   @property
   def volumes(self):
@@ -80,7 +84,10 @@ class EC2Resources:
   
   @volumes.setter
   def volumes(self, callableFunc):
-    self.__volumes = callableFunc(Filters=self.filters)
+    try:
+      self.__volumes = callableFunc(Filters=self.filters)
+    except EndpointConnectionError as err:
+      self.__volumes = '{ Error: {} }'.format(err)
 
   def __getstate__(self):
     '''There's no sense in caching connections, so this magic method is used
